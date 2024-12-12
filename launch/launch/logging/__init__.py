@@ -261,6 +261,14 @@ class LaunchConfig:
         """
         return os.path.join(self.log_dir, file_name)
 
+    def get_file_handers(self):
+        """
+        Get all file handlers.
+
+        :return: all file handlers associated to the log
+        """
+        return self.file_handlers
+
     def get_log_file_handler(self, file_name='launch.log'):
         """
         Get the logging handler to a log file.
