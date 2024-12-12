@@ -650,6 +650,16 @@ class ExecuteProcess(Action):
         # Signal that we're done to the launch system.
         self.__completed_future.set_result(None)
 
+    def __recovery_log_directory(self):
+        launch_log_file_handler = launch.logging.launch_config.get_log_file_handler()
+        self.__logger.removeHandler(launch_log_file_handler)
+        launch.logging.launch_config.get_file_handers().pop('launch.log')
+        log_dir = launch.logging.launch_config.log_dir
+        if not os.path.isdir(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        launch_log_file_handler = launch.logging.launch_config.get_log_file_handler()
+        self.__logger = launch.logging.get_logger(self.__name)
+
     class __ProcessProtocol(AsyncSubprocessProtocol):
         def __init__(
             self,
@@ -759,11 +769,21 @@ class ExecuteProcess(Action):
 
         returncode = await self._subprocess_protocol.complete
         if returncode == 0:
-            self.__logger.info('process has finished cleanly [pid {}]'.format(pid))
+            try:
+                self.__logger.info('process has finished cleanly [pid {}]'.format(pid))
+            except FileNotFoundError:
+                self.__recovery_log_directory()
+                self.__logger.info('retry process has finished cleanly [pid {}]'.format(pid))
         else:
-            self.__logger.error("process has died [pid {}, exit code {}, cmd '{}'].".format(
-                pid, returncode, ' '.join(cmd)
-            ))
+            try:
+                self.__logger.error("process has died [pid {}, exit code {}, cmd '{}'].".format(
+                    pid, returncode, ' '.join(cmd)
+                ))
+            except FileNotFoundError:
+                self.__recovery_log_directory()
+                self.__logger.error("retry process has died [pid {}, exit code {}, cmd '{}'].".format(
+                    pid, returncode, ' '.join(cmd)
+                ))
         await context.emit_event(ProcessExited(returncode=returncode, **process_event_args))
         # respawn the process if necessary
         if not context.is_shutdown and not self.__shutdown_future.done() and self.__respawn:
